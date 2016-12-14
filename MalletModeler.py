@@ -16,9 +16,7 @@ sys.path.append(os.getcwd())
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),os.path.pardir))
 from RegexTokenizer import RegexTokenizer as RegT
 
-data_root = 'C:\VEP_Core_Container\VEP_Core\\vep_core\Data'
-metadata_root = os.path.join(data_root, 'Metadata')
-corpus_root = os.path.join(data_root, 'Corpora')
+numRankingBins = 5 # Used to set this with a command-line argument, but Serendip really just likes 5
 
 def runSalTM(args):
     fullStartTime = time.time()
@@ -30,19 +28,21 @@ def runSalTM(args):
                              )
 
     # Make and name necessary directories
-    if args.corpus_path:
-        if os.path.isdir(args.corpus_path):
-            corpus_dir = args.corpus_path
-        else:
-            print 'Invalid corpus_path %s. Argument is not a directory.' % args.corpus_path
-            exit(1)
+    if os.path.isdir(args.corpus_path):
+        corpus_dir = args.corpus_path
     else:
-        corpus_dir = os.path.join(corpus_root, args.corpus_name)
-    if args.model_name is None:
-        args.model_name = args.corpus_name
-    createDir(os.path.join(metadata_root, args.model_name), False)
-    malletDir = os.path.join(metadata_root, args.model_name, 'Mallet')
-    createDir(malletDir, args.forceOverwrite)
+        print 'Invalid corpus_path %s. Argument is not a directory.' % args.corpus_path
+        exit(1)
+    if os.path.isdir(args.output_path):
+        createDir(os.path.join(args.output_path, args.model_name), False)
+        malletDir = os.path.join(args.output_path, args.model_name, 'Mallet')
+        createDir(malletDir, args.forceOverwrite)
+    else:
+        print 'Invalid output_path %s. Argument is not a directory.' % args.output_path
+        exit(1)
+    if args.extra_stopword_path is not None and not os.path.isfile(args.extra_stopword_path):
+        print 'Invalid stopword file %s. Argument is not a file.' % args.extra_stopword_path
+        exit(1)
 
     # Read and parse the corpus
     print 'Reading corpus...'
@@ -100,12 +100,12 @@ def runSalTM(args):
     tokenRegex = '"[^\s]+"'
     callStr = 'mallet import-dir --input %s --output %s --keep-sequence --token-regex %s' \
               % (malletDir, malletCorpusFile, tokenRegex)
-    if args.malletStopwords:
+    if args.mallet_stopwords:
         callStr += ' --remove-stopwords'
-        if args.extraStopwords is not None:
-            callStr += ' --extra-stopwords %s' % os.path.join(data_root, 'Stopwords', args.extraStopwords)
-    elif args.extraStopwords is not None:
-        callStr += ' --stoplist-file %s' % os.path.join(data_root, 'Stopwords', args.extraStopwords)
+        if args.extra_stopword_path is not None:
+            callStr += ' --extra-stopwords %s' % args.extra_stopword_path
+    elif args.extra_stopword_path is not None:
+        callStr += ' --stoplist-file %s' % args.extra_stopword_path
     print callStr
     returncode = subprocess.call(callStr, shell=True)
     if returncode != 0:
@@ -122,8 +122,8 @@ def runSalTM(args):
         return os.path.join(malletOutputDir, paramName)
     callStr = 'mallet train-topics --input %s' % malletCorpusFile
     # Modeling parameters
-    if args.numTopics is not None:
-        callStr += ' --num-topics %d' % args.numTopics
+    if args.num_topics is not None:
+        callStr += ' --num-topics %d' % args.num_topics
     if args.numIterations is not None:
         callStr += ' --num-iterations %d' % args.numIterations
     if args.alpha is not None:
@@ -139,19 +139,13 @@ def runSalTM(args):
     # Command-line output
     if args.showTopicsInterval is not None:
         callStr += ' --show-topics-interval %d' % args.showTopicsInterval
-    # Output files
-    if args.outputAll or args.outputSerendip or args.outputDocTopics:
-        callStr += ' --output-doc-topics %s' % getParamPath('docTopics')
-    if args.outputAll or args.outputTopicKeys:
-        callStr += ' --output-topic-keys %s' % getParamPath('topicKeys')
-    if args.outputAll or args.outputSerendip or args.outputState:
-        callStr += ' --output-state %s' % getParamPath('finalState.gz')
-    if args.outputAll or args.outputModel:
-        callStr += ' --output-model %s' % getParamPath('finalModel')
-    if args.outputAll or args.outputTopicWordWeights:
-        callStr += ' --topic-word-weights-file %s' % getParamPath('topicWordWeights')
-    if args.outputAll or args.outputSerendip or args.outputWordTopicCounts:
-        callStr += ' --word-topic-counts-file %s' % getParamPath('wordTopicCounts')
+    # Output files. Probably don't need every one of these--TODO: get rid of unnecessary ones
+    callStr += ' --output-doc-topics %s' % getParamPath('docTopics')
+    callStr += ' --output-topic-keys %s' % getParamPath('topicKeys')
+    callStr += ' --output-state %s' % getParamPath('finalState.gz')
+    callStr += ' --output-model %s' % getParamPath('finalModel')
+    callStr += ' --topic-word-weights-file %s' % getParamPath('topicWordWeights')
+    callStr += ' --word-topic-counts-file %s' % getParamPath('wordTopicCounts')
     # Now call the damn thing
     print callStr
     returncode = subprocess.call(callStr, shell=True)
@@ -160,155 +154,153 @@ def runSalTM(args):
         exit(1)
     print 'Done training. (%.2f seconds)' % (time.time() - start)
 
-    # If we're creating Serendip files, convert Mallet files
-    if args.outputAll or args.outputSerendip:
-        serendipDir = os.path.join(metadata_root, args.model_name, 'TopicModel') #TODO: these directories should really be labeled "Serendip"
-        createDir(serendipDir, args.forceOverwrite)
+    # Convert Mallet files
+    serendipDir = os.path.join(args.output_path, args.model_name, 'TopicModel') #TODO: these directories should really be labeled "Serendip"
+    createDir(serendipDir, args.forceOverwrite)
 
-        print 'Building theta...'
-        buildThetaAndMeta(os.path.join(malletOutputDir, 'docTopics'), \
-                          os.path.join(serendipDir, 'theta.csv'), \
-                          os.path.join(serendipDir, 'metadata.csv'), \
-                          args.chunkSize, args)
+    print 'Building theta...'
+    buildThetaAndMeta(os.path.join(malletOutputDir, 'docTopics'),
+                      os.path.join(serendipDir, 'theta.csv'),
+                      os.path.join(serendipDir, 'metadata.csv'),
+                      args.chunkSize, args)
 
-        print 'Building topics dir...'
-        rankBins = buildTopicCSVs(os.path.join(malletOutputDir, 'wordTopicCounts'), \
-                                    serendipDir, \
-                                    args.numTopics, \
-                                    args.numRankingBins, \
-                                    args.outputAll or args.outputFullCorpusDist, \
-                                    args.forceOverwrite)
+    print 'Building topics dir...'
+    rankBins = buildTopicCSVs(os.path.join(malletOutputDir, 'wordTopicCounts'),
+                                serendipDir,
+                                args.num_topics,
+                                numRankingBins,
+                                args.forceOverwrite)
 
-        # Unzip, tag, and format the finalState
-        print 'Tagging finalState...'
-        start = time.time()
-        #returncode = subprocess.call('gzip -d %s' % os.path.join(malletOutputDir, 'finalState.gz'), shell=True)
-        returncode = subprocess.call('7z e %s -o%s' % (os.path.join(malletOutputDir, 'finalState.gz'), malletOutputDir), shell=True)
-        #returncode = subprocess.call(['gzip', '-d', os.path.join(malletOutputDir, 'finalState.gz')])
-        if returncode != 0:
-            print 'gzip operation failed. May need to be installed on machine.'
-            exit(1)
-        htmlDir = os.path.join(serendipDir, 'HTML')
-        createDir(htmlDir, args.forceOverwrite)
+    # Unzip, tag, and format the finalState
+    print 'Tagging finalState...'
+    start = time.time()
+    #returncode = subprocess.call('gzip -d %s' % os.path.join(malletOutputDir, 'finalState.gz'), shell=True)
+    returncode = subprocess.call('7z e %s -o%s' % (os.path.join(malletOutputDir, 'finalState.gz'), malletOutputDir), shell=True)
+    #returncode = subprocess.call(['gzip', '-d', os.path.join(malletOutputDir, 'finalState.gz')])
+    if returncode != 0:
+        print 'gzip operation failed. May need to be installed on machine.'
+        exit(1)
+    htmlDir = os.path.join(serendipDir, 'HTML')
+    createDir(htmlDir, args.forceOverwrite)
 
-        # Helper function tokenizes file, applies given tags, and spits out .csv file.
-        # CSV file looks like:
-        # token, tokenToMatch, endReason, tag, indexWithinTag
-        def tagFileAsCSV(name, tags):
-            with codecs.open(os.path.join(corpus_dir, name), 'rb', encoding=args.encoding) as inF:
-                textStr = inF.read()
-            currTokens = tokenizer.tokenize(textStr)
-            rules = {}
-            outList = []
-            tagIndex = 0
-            for tokenIndex in range(len(currTokens)):
-                token = currTokens[tokenIndex]
-                # If it's a word, write it out
-                isWord = token[RegT.INDEXES['TYPE']] == RegT.TYPES['WORD']
-                isPunc = token[RegT.INDEXES['TYPE']] == RegT.TYPES['PUNCTUATION']
-                if isWord or isPunc:
-                    # Set joiner (how tokens will be pieced back together)
-                    try:
-                        if currTokens[tokenIndex+1][RegT.INDEXES['TYPE']] == RegT.TYPES['WHITESPACE']:
-                            joiner = 's'
-                        elif currTokens[tokenIndex+1][RegT.INDEXES['TYPE']] == RegT.TYPES['NEWLINE']:
-                            joiner = 'n'
-                        else:
-                            joiner = ''
-                    except IndexError: # Presumably this means that we're at the last token
-                        if len(currTokens) == tokenIndex + 1:
-                            joiner = ''
-                        else:
-                            raise
-                    csvLine = [token[RegT.INDEXES['STRS']][-1], token[RegT.INDEXES['STRS']][0], joiner]
-
-                    # If this is actually a tagged token, get the tag
-                    if isWord and tagIndex < len(tags) and token[RegT.INDEXES['STRS']][0] == tags[tagIndex][0]:
-                        topic = int(tags[tagIndex][1])
-                        word = tags[tagIndex][0]
-                        # TODO: deal with "rules.json"
-                        rule_name = 'topic_%d' % topic
-                        if rule_name in rules:
-                            rules[rule_name]['num_tags'] += 1
-                            rules[rule_name]['num_included_tokens'] += 1
-                        else:
-                            rules[rule_name] = {
-                                'name': rule_name,
-                                'full_name': rule_name,
-                                'num_tags': 1,
-                                'num_included_tokens': 1
-                            }
-                        try:
-                            freqRank, igRank, salRank = rankBins[topic][word]
-                        except KeyError:
-                            freqRank, igRank, salRank = rankBins[topic][word.encode('utf-8')]
-
-                        # Since we only have one-word tags, all "index within tag" values are 0
-                        csvLine += ['topic_%d' % topic, 0,
-                                    'freq%d' % freqRank, 0,
-                                    'ig%d' % igRank, 0,
-                                    'sal%d' % salRank, 0]
-
-                        tagIndex += 1
-
-                    # Add the csv line to the outList
-                    outList.append(csvLine)
-
-            if tagIndex != len(tags):
-                raise Exception('Error: not all of tags read in file %s. This may be an issue with the text encoding (currently attempting to use %s, can provide other options through --encoding parameter).' % (name, args.encoding))
-            nameSansExtension = name[:-4]
-            currHTMLdir = os.path.join(htmlDir, nameSansExtension)
-            createDir(currHTMLdir, args.forceOverwrite)
-            # Write rules to json file
-            with open(os.path.join(currHTMLdir, 'rules.json'), 'wb') as jsonF:
-                jsonF.write(json.dumps(rules))
-            # Write the tokens to CSV file
-            with codecs.open(os.path.join(currHTMLdir, 'tokens.csv'), 'wb', encoding=args.encoding) as tokensF:
-                tokensWriter = csv.writer(tokensF)
-                tokensWriter.writerows(outList)
-
-        # Helper function that helps when dealing with chunked files
-        def getBasename(filename):
-            baseWithChunkNum = os.path.basename(filename)
-            if args.chunkSize is None:
-                return baseWithChunkNum
-            else:
-                return baseWithChunkNum[:baseWithChunkNum.find('__')]
-
-        # Read through all the lines of the finalState.
-        # Whenever we get a complete file, tag and format it.
-        # Once we gzip -d finalState.gz, we'll get a file that looks like this, starting on line 4:
-        # doc source pos typeindex type topic
-        with codecs.open(os.path.join(malletOutputDir, 'finalState'), 'rb', encoding=args.encoding) as stateF:
-            # Eat first three lines (which aren't useful to us yet)
-            stateF.next()
-            stateF.next()
-            stateF.next()
-            # Kick off loop
-            currLine = stateF.next().split()
-            currDocNum = 0
-            currDocName = getBasename(currLine[1])
-            currTags = []
-            while True:
-                msg = '\rTagging document %d...' % (currDocNum + 1)
-                print msg,
-                sys.stdout.flush()
-
-                if getBasename(currLine[1]) == currDocName:
-                    currTags.append((currLine[4], int(currLine[5])))
-                else:
-                    # Deal with currDoc
-                    tagFileAsCSV(currDocName, currTags)
-                    # Update things for next doc
-                    currDocNum += 1
-                    currDocName = getBasename(currLine[1])
-                    currTags = [currLine[4:]]
+    # Helper function tokenizes file, applies given tags, and spits out .csv file.
+    # CSV file looks like:
+    # token, tokenToMatch, endReason, tag, indexWithinTag
+    def tagFileAsCSV(name, tags):
+        with codecs.open(os.path.join(corpus_dir, name), 'rb', encoding=args.encoding) as inF:
+            textStr = inF.read()
+        currTokens = tokenizer.tokenize(textStr)
+        rules = {}
+        outList = []
+        tagIndex = 0
+        for tokenIndex in range(len(currTokens)):
+            token = currTokens[tokenIndex]
+            # If it's a word, write it out
+            isWord = token[RegT.INDEXES['TYPE']] == RegT.TYPES['WORD']
+            isPunc = token[RegT.INDEXES['TYPE']] == RegT.TYPES['PUNCTUATION']
+            if isWord or isPunc:
+                # Set joiner (how tokens will be pieced back together)
                 try:
-                    currLine = stateF.next().split()
-                except StopIteration:
-                    tagFileAsCSV(currDocName, currTags)
-                    break
-        print 'Done tagging. (%.2f seconds)' % (time.time() - start)
+                    if currTokens[tokenIndex+1][RegT.INDEXES['TYPE']] == RegT.TYPES['WHITESPACE']:
+                        joiner = 's'
+                    elif currTokens[tokenIndex+1][RegT.INDEXES['TYPE']] == RegT.TYPES['NEWLINE']:
+                        joiner = 'n'
+                    else:
+                        joiner = ''
+                except IndexError: # Presumably this means that we're at the last token
+                    if len(currTokens) == tokenIndex + 1:
+                        joiner = ''
+                    else:
+                        raise
+                csvLine = [token[RegT.INDEXES['STRS']][-1], token[RegT.INDEXES['STRS']][0], joiner]
+
+                # If this is actually a tagged token, get the tag
+                if isWord and tagIndex < len(tags) and token[RegT.INDEXES['STRS']][0] == tags[tagIndex][0]:
+                    topic = int(tags[tagIndex][1])
+                    word = tags[tagIndex][0]
+                    # TODO: deal with "rules.json"
+                    rule_name = 'topic_%d' % topic
+                    if rule_name in rules:
+                        rules[rule_name]['num_tags'] += 1
+                        rules[rule_name]['num_included_tokens'] += 1
+                    else:
+                        rules[rule_name] = {
+                            'name': rule_name,
+                            'full_name': rule_name,
+                            'num_tags': 1,
+                            'num_included_tokens': 1
+                        }
+                    try:
+                        freqRank, igRank, salRank = rankBins[topic][word]
+                    except KeyError:
+                        freqRank, igRank, salRank = rankBins[topic][word.encode('utf-8')]
+
+                    # Since we only have one-word tags, all "index within tag" values are 0
+                    csvLine += ['topic_%d' % topic, 0,
+                                'freq%d' % freqRank, 0,
+                                'ig%d' % igRank, 0,
+                                'sal%d' % salRank, 0]
+
+                    tagIndex += 1
+
+                # Add the csv line to the outList
+                outList.append(csvLine)
+
+        if tagIndex != len(tags):
+            raise Exception('Error: not all of tags read in file %s. This may be an issue with the text encoding (currently attempting to use %s, can provide other options through --encoding parameter).' % (name, args.encoding))
+        nameSansExtension = name[:-4]
+        currHTMLdir = os.path.join(htmlDir, nameSansExtension)
+        createDir(currHTMLdir, args.forceOverwrite)
+        # Write rules to json file
+        with open(os.path.join(currHTMLdir, 'rules.json'), 'wb') as jsonF:
+            jsonF.write(json.dumps(rules))
+        # Write the tokens to CSV file
+        with codecs.open(os.path.join(currHTMLdir, 'tokens.csv'), 'wb', encoding=args.encoding) as tokensF:
+            tokensWriter = csv.writer(tokensF)
+            tokensWriter.writerows(outList)
+
+    # Helper function that helps when dealing with chunked files
+    def getBasename(filename):
+        baseWithChunkNum = os.path.basename(filename)
+        if args.chunkSize is None:
+            return baseWithChunkNum
+        else:
+            return baseWithChunkNum[:baseWithChunkNum.find('__')]
+
+    # Read through all the lines of the finalState.
+    # Whenever we get a complete file, tag and format it.
+    # Once we gzip -d finalState.gz, we'll get a file that looks like this, starting on line 4:
+    # doc source pos typeindex type topic
+    with codecs.open(os.path.join(malletOutputDir, 'finalState'), 'rb', encoding=args.encoding) as stateF:
+        # Eat first three lines (which aren't useful to us yet)
+        stateF.next()
+        stateF.next()
+        stateF.next()
+        # Kick off loop
+        currLine = stateF.next().split()
+        currDocNum = 0
+        currDocName = getBasename(currLine[1])
+        currTags = []
+        while True:
+            msg = '\rTagging document %d...' % (currDocNum + 1)
+            print msg,
+            sys.stdout.flush()
+
+            if getBasename(currLine[1]) == currDocName:
+                currTags.append((currLine[4], int(currLine[5])))
+            else:
+                # Deal with currDoc
+                tagFileAsCSV(currDocName, currTags)
+                # Update things for next doc
+                currDocNum += 1
+                currDocName = getBasename(currLine[1])
+                currTags = [currLine[4:]]
+            try:
+                currLine = stateF.next().split()
+            except StopIteration:
+                tagFileAsCSV(currDocName, currTags)
+                break
+    print 'Done tagging. (%.2f seconds)' % (time.time() - start)
 
     print 'Total time elapsed: %.2f seconds' % (time.time() - fullStartTime)
 
@@ -391,12 +383,12 @@ def buildThetaAndMeta(docTopicPath, thetaPath, metaPath, chunkSize, args):
 # The wordTopicCounts file has lines of this form:
 # typeIndex type topic#:count topic#:count topic#:count ...
 #TODO: word distributions
-def buildTopicCSVs(wordTopicCountsPath, topicDirPath, numTopics, numRankingBins, outputFullCorpusDist, forceOverwrite=False):
+def buildTopicCSVs(wordTopicCountsPath, topicDirPath, num_topics, numRankingBins, forceOverwrite=False):
     # Read the wordTopicCounts file
     with open(wordTopicCountsPath, 'rb') as wtcF:
-        topicDists = [ [] for i in range(numTopics) ] # Distributions across vocab for each topic
-        p_topic = [ 0.0 for i in range(numTopics) ] # probability of each topic
-        p_topicGivenWord = [ {} for i in range(numTopics) ] # probability of each topic given word
+        topicDists = [ [] for i in range(num_topics) ] # Distributions across vocab for each topic
+        p_topic = [ 0.0 for i in range(num_topics) ] # probability of each topic
+        p_topicGivenWord = [ {} for i in range(num_topics) ] # probability of each topic given word
         p_word = [] # probability of each word across whole corpus
         totWordCount = 0.0 # Used to normalize p_topic
         for line in wtcF:
@@ -419,14 +411,14 @@ def buildTopicCSVs(wordTopicCountsPath, topicDirPath, numTopics, numRankingBins,
             # Add word to corpus distribution
             p_word.append([word, thisWordCount])
         # Normalize p_topic
-        for topic in range(numTopics):
+        for topic in range(num_topics):
             p_topic[topic] /= totWordCount
         # Normalize p_word
         for i in range(len(p_word)):
             p_word[i][1] /= totWordCount
 
     # Sort and normalize topicDists
-    for topic in range(numTopics):
+    for topic in range(num_topics):
         topicDists[topic].sort(key=lambda x: x[1], reverse=True)
         tot = 0.0
         for i in range(len(topicDists[topic])):
@@ -437,9 +429,9 @@ def buildTopicCSVs(wordTopicCountsPath, topicDirPath, numTopics, numRankingBins,
     p_word.sort(key=lambda x:x[1], reverse=True)
 
     # Calculate and sort information gain lists
-    igLists = [ [] for i in range(numTopics) ]
-    igDicts = [ {} for i in range(numTopics) ]
-    for topic in range(numTopics):
+    igLists = [ [] for i in range(num_topics) ]
+    igDicts = [ {} for i in range(num_topics) ]
+    for topic in range(num_topics):
         p_t = p_topic[topic]
         totIG = 0.0
         for word, freq in topicDists[topic]:
@@ -462,8 +454,8 @@ def buildTopicCSVs(wordTopicCountsPath, topicDirPath, numTopics, numRankingBins,
             igLists[topic][i][1] /= totIG
 
     # Calculate and sort saliency lists
-    salLists = [ [] for i in range(numTopics) ]
-    for topic in range(numTopics):
+    salLists = [ [] for i in range(num_topics) ]
+    for topic in range(num_topics):
         totSal = 0.0
         for word, freq in topicDists[topic]:
             try:
@@ -484,7 +476,7 @@ def buildTopicCSVs(wordTopicCountsPath, topicDirPath, numTopics, numRankingBins,
     createDir(igPath, forceOverwrite)
     salPath = os.path.join(topicDirPath, 'topics_sal')
     createDir(salPath, forceOverwrite)
-    for topic in range(numTopics):
+    for topic in range(num_topics):
         filename = 'topic_%d.csv' % topic
         with open(os.path.join(freqPath, filename), 'wb') as freqF:
             freqWriter = csv.writer(freqF)
@@ -500,15 +492,14 @@ def buildTopicCSVs(wordTopicCountsPath, topicDirPath, numTopics, numRankingBins,
                 salWriter.writerow(salPair)
 
     # Output full corpus distribution
-    if outputFullCorpusDist:
-        with open(os.path.join(topicDirPath, 'corpus_dist.csv'), 'wb') as distF:
-                distWriter = csv.writer(distF)
-                for pair in p_word:
-                    distWriter.writerow(pair)
+    with open(os.path.join(topicDirPath, 'corpus_dist.csv'), 'wb') as distF:
+            distWriter = csv.writer(distF)
+            for pair in p_word:
+                distWriter.writerow(pair)
 
     # Create ranking bins
-    rankBins = [ {} for i in range(numTopics) ]
-    for topic in range(numTopics):
+    rankBins = [ {} for i in range(num_topics) ]
+    for topic in range(num_topics):
         # frequency bins
         currFreqTot = 0.0
         currBin = 1
@@ -558,20 +549,20 @@ def createDir(name, force=False):
 def main():
     parser = argparse.ArgumentParser(description='A Mallet-based topic modeler for Serendip')
 
-    parser.add_argument('--corpus_name', help='name of the corpus', required=True)
-    parser.add_argument('--model_name', help='name of the model')
-    parser.add_argument('--corpus_path', help='full path to corpus (if not located in VEP_Core Corpora directory)')
+    parser.add_argument('--model_name', help='name of the model', required=True)
+    parser.add_argument('--output_path', help='path to output directory (new directory will be made for model_name', required=True)
+    parser.add_argument('--corpus_path', help='full path to corpus directory', required=True)
     parser.add_argument('-f', '--forceOverwrite', help='force overwriting of previous corpus/model', action='store_true')
 
     parsingGroup = parser.add_argument_group('Corpus parsing parameters')
-    parsingGroup.add_argument('-mS', '--malletStopwords', help='ignore standard Mallet stopwords', action='store_true')
-    parsingGroup.add_argument('-eS', '--extraStopwords', help='file of extra stopwords to be ignored')
+    parsingGroup.add_argument('-mS', '--mallet_stopwords', help='ignore standard Mallet stopwords', action='store_true')
+    parsingGroup.add_argument('-eS', '--extra_stopword_path', help='path to file of extra stopwords to be ignored')
     parsingGroup.add_argument('--chunkSize', help='number of tokens per chunk (no chunking if left empty)', type=int)
     parsingGroup.add_argument('--encoding', help='text encoding type with which to read documents (default: utf-8)', default='utf-8')
     # other good encoding: latin-1
 
     modelingGroup = parser.add_argument_group('LDA modeling parameters')
-    modelingGroup.add_argument('-n', '--numTopics', help='number of topics to infer', type=int)
+    modelingGroup.add_argument('-n', '--num_topics', help='number of topics to infer', type=int, required=True)
     modelingGroup.add_argument('-i', '--numIterations', help='number of iterations run by modeler', type=int)
     modelingGroup.add_argument('-a', '--alpha', help='alpha parameter for model', type=float)
     modelingGroup.add_argument('-b', '--beta', help='beta parameter for model', type=float)
@@ -581,19 +572,6 @@ def main():
 
     feedbackGroup = parser.add_argument_group('Command-line feedback parameters')
     feedbackGroup.add_argument('-sTI', '--showTopicsInterval', help='iterations between showing topics', type=int)
-
-    outputGroup = parser.add_argument_group('Modeling output parameters')
-    outputGroup.add_argument('-oDT', '--outputDocTopics', help='output the doc-topic proportions', action='store_true')
-    outputGroup.add_argument('-oTK', '--outputTopicKeys', help='output file of simple topic representations', action='store_true')
-    outputGroup.add_argument('-oS', '--outputState', help='output full final state of Gibbs sampling (g-zipped)', action='store_true')
-    outputGroup.add_argument('-oM', '--outputModel', help='output full final model', action='store_true')
-    outputGroup.add_argument('-oTWW', '--outputTopicWordWeights', help='output topic-word-weights file', action='store_true')
-    outputGroup.add_argument('-oWTC', '--outputWordTopicCounts', help='output word-topic-counts file', action='store_true')
-    outputGroup.add_argument('-oFCD', '--outputFullCorpusDist', help='output full corpus distribution of vocabulary', action='store_true')
-    outputGroup.add_argument('--outputSerendip', help='output files needed by Serendip', action='store_true')
-    outputGroup.add_argument('--outputAll', help='output all potential files', action='store_true')
-    outputGroup.add_argument('--numRankingBins', help='number of bins in which to divide words for color-coding', type=int, default=5)
-    outputGroup.add_argument('--htmlPageSize', help='number of tokens per page of html. default is no pagination', type=int, default=1000)
 
     parser.set_defaults(func=runSalTM)
     args = parser.parse_args()
