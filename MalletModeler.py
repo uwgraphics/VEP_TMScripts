@@ -15,6 +15,7 @@ from copy import deepcopy
 sys.path.append(os.getcwd())
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),os.path.pardir))
 from RegexTokenizer import RegexTokenizer as RegT
+import gzip
 
 numRankingBins = 5 # Used to set this with a command-line argument, but Serendip really just likes 5
 
@@ -75,11 +76,11 @@ def runSalTM(args):
         '''
         words = [ wt[RegT.INDEXES['STRS']][0] for wt in wordTokens ]
 
-        if args.chunkSize is not None:
-            numChunks = int(len(words)/args.chunkSize) + 1
+        if args.chunk_size is not None:
+            numChunks = int(len(words)/args.chunk_size) + 1
             i = 0
             while i < numChunks:
-                strForMallet = u' '.join(words[i*args.chunkSize:(i+1)*args.chunkSize])
+                strForMallet = u' '.join(words[i*args.chunk_size:(i+1)*args.chunk_size])
                 with codecs.open(os.path.join(malletCorpusDir, textName + '__' + str(i).zfill(6)), 'wb', encoding=args.encoding) as outF: # TODO: what if 6 isn't big enough?
                     outF.write(strForMallet)
                 i += 1
@@ -124,8 +125,8 @@ def runSalTM(args):
     # Modeling parameters
     if args.num_topics is not None:
         callStr += ' --num-topics %d' % args.num_topics
-    if args.numIterations is not None:
-        callStr += ' --num-iterations %d' % args.numIterations
+    if args.num_iterations is not None:
+        callStr += ' --num-iterations %d' % args.num_iterations
     if args.alpha is not None:
         callStr += ' --alpha %f' % args.alpha
     if args.beta is not None:
@@ -162,7 +163,7 @@ def runSalTM(args):
     buildThetaAndMeta(os.path.join(malletOutputDir, 'docTopics'),
                       os.path.join(serendipDir, 'theta.csv'),
                       os.path.join(serendipDir, 'metadata.csv'),
-                      args.chunkSize, args)
+                      args.chunk_size, args)
 
     print 'Building topics dir...'
     rankBins = buildTopicCSVs(os.path.join(malletOutputDir, 'wordTopicCounts'),
@@ -171,15 +172,9 @@ def runSalTM(args):
                                 numRankingBins,
                                 args.forceOverwrite)
 
-    # Unzip, tag, and format the finalState
-    print 'Tagging finalState...'
+    # Tag and format the finalState (can use gzip library rather than extracting)
+    print 'Tagging documents...'
     start = time.time()
-    #returncode = subprocess.call('gzip -d %s' % os.path.join(malletOutputDir, 'finalState.gz'), shell=True)
-    returncode = subprocess.call('7z e %s -o%s' % (os.path.join(malletOutputDir, 'finalState.gz'), malletOutputDir), shell=True)
-    #returncode = subprocess.call(['gzip', '-d', os.path.join(malletOutputDir, 'finalState.gz')])
-    if returncode != 0:
-        print 'gzip operation failed. May need to be installed on machine.'
-        exit(1)
     htmlDir = os.path.join(serendipDir, 'HTML')
     createDir(htmlDir, args.forceOverwrite)
 
@@ -262,7 +257,7 @@ def runSalTM(args):
     # Helper function that helps when dealing with chunked files
     def getBasename(filename):
         baseWithChunkNum = os.path.basename(filename)
-        if args.chunkSize is None:
+        if args.chunk_size is None:
             return baseWithChunkNum
         else:
             return baseWithChunkNum[:baseWithChunkNum.find('__')]
@@ -271,7 +266,7 @@ def runSalTM(args):
     # Whenever we get a complete file, tag and format it.
     # Once we gzip -d finalState.gz, we'll get a file that looks like this, starting on line 4:
     # doc source pos typeindex type topic
-    with codecs.open(os.path.join(malletOutputDir, 'finalState'), 'rb', encoding=args.encoding) as stateF:
+    with gzip.open(os.path.join(malletOutputDir, 'finalState.gz'), 'rb') as stateF:
         # Eat first three lines (which aren't useful to us yet)
         stateF.next()
         stateF.next()
@@ -309,7 +304,7 @@ def runSalTM(args):
 # docNum filename topic proportion topic proportion topic proportion ...
 # TODO: remove the middle man. theta is no better than docTopic. Update Serendip for this.
 # TODO: bug. This doesn't take into account the fact that the last chunk might be smaller than the rest when normalizing.
-def buildThetaAndMeta(docTopicPath, thetaPath, metaPath, chunkSize, args):
+def buildThetaAndMeta(docTopicPath, thetaPath, metaPath, chunk_size, args):
     with open(docTopicPath, 'rb') as dtFile: # TODO: args.encoding?
         with open(thetaPath, 'wb') as tFile: # TODO: args.encoding?
             with open(metaPath, 'wb') as mFile: # TODO: args.encoding?
@@ -320,7 +315,7 @@ def buildThetaAndMeta(docTopicPath, thetaPath, metaPath, chunkSize, args):
                 metaWriter.writerow(['id','filename'])
                 metaWriter.writerow(['int','str'])
                 # If we're not chunking, this is pretty straightforward
-                if chunkSize is None:
+                if chunk_size is None:
                     # Loop through docTopics file, adding lines to theta and metadata
                     firstLine = True
                     for line in dtFile:
@@ -557,13 +552,13 @@ def main():
     parsingGroup = parser.add_argument_group('Corpus parsing parameters')
     parsingGroup.add_argument('-mS', '--mallet_stopwords', help='ignore standard Mallet stopwords', action='store_true')
     parsingGroup.add_argument('-eS', '--extra_stopword_path', help='path to file of extra stopwords to be ignored')
-    parsingGroup.add_argument('--chunkSize', help='number of tokens per chunk (no chunking if left empty)', type=int)
+    parsingGroup.add_argument('--chunk_size', help='number of tokens per chunk (no chunking if left empty)', type=int)
     parsingGroup.add_argument('--encoding', help='text encoding type with which to read documents (default: utf-8)', default='utf-8')
     # other good encoding: latin-1
 
     modelingGroup = parser.add_argument_group('LDA modeling parameters')
     modelingGroup.add_argument('-n', '--num_topics', help='number of topics to infer', type=int, required=True)
-    modelingGroup.add_argument('-i', '--numIterations', help='number of iterations run by modeler', type=int)
+    modelingGroup.add_argument('-i', '--num_iterations', help='number of iterations run by modeler', type=int, default=100)
     modelingGroup.add_argument('-a', '--alpha', help='alpha parameter for model', type=float)
     modelingGroup.add_argument('-b', '--beta', help='beta parameter for model', type=float)
     modelingGroup.add_argument('-r', '--randomSeed', help='starting seed for model iterations', type=int)

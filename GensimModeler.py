@@ -149,7 +149,7 @@ def buildGSmodel(args):
                                num_topics=args.num_topics,
                                alpha='auto',
                                eta='auto',
-                               iterations=2000,
+                               iterations=args.num_iterations,
                                minimum_probability=.0001)
     if not args.silent:
         print 'Done. (%.2f seconds)' % (time.time() - start)
@@ -418,6 +418,7 @@ if __name__=='__main__':
     parser.add_argument('--corpus_path', help='path to corpus directory', required=True)
     parser.add_argument('--output_path', help='path to output directory (new directory by will be made for model_name', required=True)
     parser.add_argument('-n', '--num_topics', help='number of topics to infer', type=int, required=True)
+    parser.add_argument('-i', '--num_iterations', help='number of iterations run by modeler', type=int, default=100)    
     parser.add_argument('--encoding', help='text encoding type with which to read documents (default: utf-8)', default='utf-8')
     parser.add_argument('--nltk_stopwords', help='extract nltk English stopwords from documents before modeling', action='store_true')
     parser.add_argument('--extra_stopword_path', help='path to file containing space-delimited stopwords to exclude before modeling')
