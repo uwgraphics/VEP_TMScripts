@@ -8,6 +8,7 @@ There are two main scripts for creating topic models: **MalletModeler.py** and *
 - [Gensim](https://radimrehurek.com/gensim/)
 - [Scipy](https://www.scipy.org/)
 - [NLTK](http://www.nltk.org/)
+- [unicodecsv](https://github.com/jdunck/python-unicodecsv) (Optional. For special-character-heavy texts.)
 
 ##MalletModeler.py
 MalletModeler creates topic models using the [Mallet tool](http://mallet.cs.umass.edu/topics.php) developed by David Mimno, and requires extra software to function properly.
