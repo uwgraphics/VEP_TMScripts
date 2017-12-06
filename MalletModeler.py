@@ -4,7 +4,13 @@ import subprocess
 import argparse
 import os
 import shutil
-import csv
+# unicodecsv is a package that allows better writing of unicode characters to tokens.csv
+try:
+    import unicodecsv as csv
+    unicodeCSVSet = True
+except ImportError:
+    import csv
+    unicodeCSVSet = False
 import sys
 import math
 import json
@@ -210,7 +216,7 @@ def runSalTM(args):
                 csvLine = [token[RegT.INDEXES['STRS']][-1], token[RegT.INDEXES['STRS']][0], joiner]
 
                 # If this is actually a tagged token, get the tag
-                if isWord and tagIndex < len(tags) and token[RegT.INDEXES['STRS']][0] == tags[tagIndex][0]:
+                if isWord and tagIndex < len(tags) and token[RegT.INDEXES['STRS']][0] == tags[tagIndex][0].decode(args.encoding):
                     topic = int(tags[tagIndex][1])
                     word = tags[tagIndex][0]
                     # TODO: deal with "rules.json"
@@ -250,9 +256,14 @@ def runSalTM(args):
         with open(os.path.join(currHTMLdir, 'rules.json'), 'wb') as jsonF:
             jsonF.write(json.dumps(rules))
         # Write the tokens to CSV file
-        with codecs.open(os.path.join(currHTMLdir, 'tokens.csv'), 'wb', encoding=args.encoding) as tokensF:
-            tokensWriter = csv.writer(tokensF)
-            tokensWriter.writerows(outList)
+        if unicodeCSVSet:
+            with open(os.path.join(currHTMLdir, 'tokens.csv'), 'wb') as tokensF:
+                tokensWriter = csv.writer(tokensF, encoding=args.encoding)
+                tokensWriter.writerows(outList)
+        else:
+            with codecs.open(os.path.join(currHTMLdir, 'tokens.csv'), 'wb', encoding=args.encoding) as tokensF:
+                tokensWriter = csv.writer(tokensF)
+                tokensWriter.writerows(outList)
 
     # Helper function that helps when dealing with chunked files
     def getBasename(filename):
