@@ -1,4 +1,4 @@
-#VEP_TMScripts
+# VEP_TMScripts
 This repository contains scripts for creating topic models in a directory structure that can be read by [SerendipSlim](https://github.com/uwgraphics/SerendipSlim), a visual model exploration tool. These scripts are somewhat brittle and are provided **AS IS**. They may need to be adjusted or tuned for use on some machines or in certain environments, or to get specific modeling results.
 
 There are two main scripts for creating topic models: **MalletModeler.py** and **GensimModeler.py**.
@@ -10,15 +10,15 @@ There are two main scripts for creating topic models: **MalletModeler.py** and *
 - [NLTK](http://www.nltk.org/)
 - [unicodecsv](https://github.com/jdunck/python-unicodecsv) (Optional. For special-character-heavy texts.)
 
-##MalletModeler.py
+## MalletModeler.py
 MalletModeler creates topic models using the [Mallet tool](http://mallet.cs.umass.edu/topics.php) developed by David Mimno, and requires extra software to function properly.
 
-###Mallet
+### Mallet
 To use MalletModeler, Mallet needs to be installed on your machine and accessible from your system path. Installation instructions for Mallet can be found [here](http://mallet.cs.umass.edu/download.php). Instructions for updating your system path environment variable can be found [here for Windows](https://www.java.com/en/download/help/path.xml) and [here for Macs](https://www.cyberciti.biz/faq/appleosx-bash-unix-change-set-path-environment-variable/).
 
 > *Note*: In the past, I have typically used Mallet version 2.0.7. There may be some issues associated with using their new version, 2.0.8.
 
-###Running MalletModeler
+### Running MalletModeler
 Once the required third-party software has been properly installed, MalletModeler can be run from within the VEP_TMScripts directory with the simple command python MalletModeler.py. However, this will not create a new topic model unless provided with the proper arguments. MalletModeler requires the following arguments:
 
 - `--corpus_path` (REQUIRED): A path specifying a directory containing the .txt files that will form the basis for the topic model being created. This directory should only contain .txt files.
@@ -43,10 +43,10 @@ Additional arguments (related to [Mallet's command line arguments](http://mallet
 
 If everything works properly, the files SerendipSlim needs to display the newly created topic model will be created in a new directory within the given output_path by the name of model_name. For instructions on how to point a local installation of SerendipSlim at this new model, see the [SerendipSlim README](https://github.com/uwgraphics/SerendipSlim#serendipslim-model-format).
 
-##GensimModeler.py
+## GensimModeler.py
 GensimModeler creates topic models using the Python library [Gensim](https://radimrehurek.com/gensim/). Gensim has grown in popularity in particular thanks to its implementation of deep learning in the popular [word2vec](https://radimrehurek.com/gensim/models/word2vec.html), but also is equipped to create compact topic models over streamed text data using LDA. To be overly honest, GensimModeler does not take advantage of Gensim's real strengths (e.g., being able to create models of extremely large corpora using a streamed algorithm), and primarily provides a (brittle) way of hacking Gensim output into something like what SerendipSlim requires. My use of Gensim's modeling parameters leaves something to be desired, and needs to be improved. Nonetheless, here it is!
 
-###Running GensimModeler
+### Running GensimModeler
 Like MalletModeler, GensimModeler can be run from within the VEP_TMScripts directory with the simple command python GensimModeler.py. However, this will not create a new topic model unless provided with the proper arguments. GensimModeler requires the following arguments:
 
 - `--corpus_path` (REQUIRED): A path specifying a directory containing the .txt files that will form the basis for the topic model being created. This directory should only contain .txt files.
@@ -69,5 +69,5 @@ GensimModeler can take other arguments that can give researchers greater control
 
 As with MalletModeler, if everything works properly, the files SerendipSlim needs to display the newly created topic model will be created in a new directory within the given output_path by the name of model_name. For instructions on how to point a local installation of SerendipSlim at this new model, see the [SerendipSlim README](https://github.com/uwgraphics/SerendipSlim#serendipslim-model-format).
 
-##Note of warning, and an entreaty:
+## Note of warning, and an entreaty:
 Again, these scripts were written to be used by a handful of people on a handful of machines--they have not been tested within a variety of environments, and they do not take full advantage of the modeling capabilities of either Mallet or Gensim. They may be updated over time, but if you are interested in building better models, please feel free to improve them as you see fit!
